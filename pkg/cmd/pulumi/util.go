@@ -171,7 +171,7 @@ func (f *lm) Login(
 		return nil, err
 	}
 	return httpstate.New(sink, url, project, insecure)
-}
+	}
 
 func nonInteractiveCurrentBackend(
 	ctx context.Context, ws pkgWorkspace.Context, lm backend.LoginManager, project *workspace.Project,
@@ -204,7 +204,7 @@ func currentBackend(
 
 	// Only set current if we don't currently have a cloud URL set.
 	return lm.Login(ctx, ws, cmdutil.Diag(), url, project, url == "", opts.Color)
-}
+	}
 
 func createSecretsManagerForExistingStack(
 	ctx context.Context, ws pkgWorkspace.Context, stack backend.Stack, secretsProvider string,

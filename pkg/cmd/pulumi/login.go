@@ -36,6 +36,7 @@ func newLoginCmd() *cobra.Command {
 	var defaultOrg string
 	var localMode bool
 	var insecure bool
+	var setCurrent bool
 
 	cmd := &cobra.Command{
 		Use:   "login [<url>]",
@@ -152,6 +153,7 @@ func newLoginCmd() *cobra.Command {
 					return errors.New("unable to set default org for this type of backend")
 				}
 			} else {
+//				be, err = loginToCloudInternal(ctx, cloudURL, project, insecure, setCurrent, displayOptions)
 				// if the user has specified a default org to associate with the backend
 				if defaultOrg != "" {
 					if err := workspace.SetBackendConfigDefaultOrg(be.URL(), defaultOrg); err != nil {
@@ -176,6 +178,7 @@ func newLoginCmd() *cobra.Command {
 		"Please note, currently, only the managed and self-hosted backends support organizations")
 	cmd.PersistentFlags().BoolVarP(&localMode, "local", "l", false, "Use Pulumi in local-only mode")
 	cmd.PersistentFlags().BoolVar(&insecure, "insecure", false, "Allow insecure server connections when using SSL")
+	cmd.PersistentFlags().BoolVar(&setCurrent, "set-current", true, "Set the current cloud to the one being logged into")
 
 	return cmd
 }
