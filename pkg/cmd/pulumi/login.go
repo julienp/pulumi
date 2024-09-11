@@ -143,7 +143,7 @@ func newLoginCmd() *cobra.Command {
 			}
 
 			be, err := DefaultLoginManager.Login(
-				ctx, ws, cmdutil.Diag(), cloudURL, project, true /* setCurrent */, displayOptions.Color)
+				ctx, ws, cmdutil.Diag(), cloudURL, project, setCurrent, displayOptions.Color)
 			if err != nil {
 				return fmt.Errorf("problem logging in: %w", err)
 			}
@@ -153,7 +153,6 @@ func newLoginCmd() *cobra.Command {
 					return errors.New("unable to set default org for this type of backend")
 				}
 			} else {
-//				be, err = loginToCloudInternal(ctx, cloudURL, project, insecure, setCurrent, displayOptions)
 				// if the user has specified a default org to associate with the backend
 				if defaultOrg != "" {
 					if err := workspace.SetBackendConfigDefaultOrg(be.URL(), defaultOrg); err != nil {
