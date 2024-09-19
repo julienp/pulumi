@@ -841,6 +841,35 @@ func (pd PackageDescriptor) String() string {
 	return name + v
 }
 
+// A comparison function for sorting PackageDescriptors by their version.
+func SortPackageDescriptors(x PackageDescriptor, y PackageDescriptor) int {
+	// Sort by package version first
+	vx := x.PackageVersion()
+	vy := y.PackageVersion()
+	if vx != nil && vy != nil {
+		return vx.Compare(*vy)
+	}
+	if vx != nil {
+		return 1
+	}
+	if vy != nil {
+		return -1
+	}
+	// If the package versions were equal sort by the plugin version
+	vx = x.Version
+	vy = y.Version
+	if vx != nil && vy != nil {
+		return vx.Compare(*vy)
+	}
+	if vx != nil {
+		return 1
+	}
+	if vy != nil {
+		return -1
+	}
+	return 0
+}
+
 // A Parameterization may be applied to a supporting plugin to yield a package.
 type Parameterization struct {
 	// The name of the package that will be produced by the parameterization.

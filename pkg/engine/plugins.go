@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
+	"slices"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -70,6 +70,15 @@ func (p PackageSet) Union(other PackageSet) PackageSet {
 		newSet.Add(value)
 	}
 	return newSet
+}
+
+// Values returns a slice of all of the packages contained within this set.
+func (p PackageSet) Values() []workspace.PackageDescriptor {
+	plugins := slice.Prealloc[workspace.PackageDescriptor](len(p))
+	for _, value := range p {
+		plugins = append(plugins, value)
+	}
+	return plugins
 }
 
 // ToPluginSet converts this PackageSet to a PluginSet by discarding all parameterization information.
@@ -530,7 +539,9 @@ func installPlugin(
 // that the engine uses to determine which version of a particular provider to load.
 //
 // it is critical that this function be 100% deterministic.
-func computeDefaultProviderPlugins(languagePlugins, allPlugins PluginSet) map[tokens.Package]workspace.PluginSpec {
+func computeDefaultProviderPlugins(
+	languagePlugins, allPlugins PackageSet,
+) map[tokens.Package]workspace.PackageDescriptor {
 	// Language hosts are not required to specify the full set of plugins they depend on. If the set of plugins received
 	// from the language host does not include any resource providers, fall back to the full set of plugins.
 	languageReportedProviderPlugins := false
@@ -547,7 +558,7 @@ func computeDefaultProviderPlugins(languagePlugins, allPlugins PluginSet) map[to
 		sourceSet = allPlugins
 	}
 
-	defaultProviderPlugins := make(map[tokens.Package]workspace.PluginSpec)
+	defaultProviderPlugins := make(map[tokens.Package]workspace.PackageDescriptor)
 
 	// Sort the set of source plugins by version, so that we iterate over the set of plugins in a deterministic order.
 	// Sorting by version gets us two properties:
@@ -558,9 +569,9 @@ func computeDefaultProviderPlugins(languagePlugins, allPlugins PluginSet) map[to
 	//
 	// Despite these properties, the below loop explicitly handles those cases to preserve correct behavior even if the
 	// sort is not functioning properly.
-	sourcePlugins := sourceSet.Values()
-	sort.Sort(workspace.SortedPluginSpec(sourcePlugins))
-	for _, p := range sourcePlugins {
+	sourcePackages := sourceSet.Values()
+	slices.SortFunc(sourcePackages, workspace.SortPackageDescriptors)
+	for _, p := range sourcePackages {
 		logging.V(preparePluginLog).Infof("computeDefaultProviderPlugins(): considering %s", p)
 		if p.Kind != apitype.ResourcePlugin {
 			// Default providers are only relevant for resource plugins.
@@ -569,12 +580,14 @@ func computeDefaultProviderPlugins(languagePlugins, allPlugins PluginSet) map[to
 			continue
 		}
 
-		if seenPlugin, has := defaultProviderPlugins[tokens.Package(p.Name)]; has {
+		name := tokens.Package(p.PackageName())
+
+		if seenPlugin, has := defaultProviderPlugins[name]; has {
 			if seenPlugin.Version == nil {
 				logging.V(preparePluginLog).Infof(
 					"computeDefaultProviderPlugins(): plugin %s selected for package %s (override, previous was nil)",
 					p, p.Name)
-				defaultProviderPlugins[tokens.Package(p.Name)] = p
+				defaultProviderPlugins[name] = p
 				continue
 			}
 
@@ -583,7 +596,7 @@ func computeDefaultProviderPlugins(languagePlugins, allPlugins PluginSet) map[to
 				logging.V(preparePluginLog).Infof(
 					"computeDefaultProviderPlugins(): plugin %s selected for package %s (override, newer than previous %s)",
 					p, p.Name, seenPlugin.Version)
-				defaultProviderPlugins[tokens.Package(p.Name)] = p
+				defaultProviderPlugins[name] = p
 				continue
 			}
 
@@ -594,7 +607,7 @@ func computeDefaultProviderPlugins(languagePlugins, allPlugins PluginSet) map[to
 
 		logging.V(preparePluginLog).Infof(
 			"computeDefaultProviderPlugins(): plugin %s selected for package %s (first seen)", p, p.Name)
-		defaultProviderPlugins[tokens.Package(p.Name)] = p
+		defaultProviderPlugins[name] = p
 	}
 
 	if logging.V(preparePluginLog) {
@@ -604,7 +617,7 @@ func computeDefaultProviderPlugins(languagePlugins, allPlugins PluginSet) map[to
 		}
 	}
 
-	defaultProviderInfo := make(map[tokens.Package]workspace.PluginSpec)
+	defaultProviderInfo := make(map[tokens.Package]workspace.PackageDescriptor)
 	for name, plugin := range defaultProviderPlugins {
 		defaultProviderInfo[name] = plugin
 	}
