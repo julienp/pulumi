@@ -373,7 +373,7 @@ func TestInvokeOptionComposite(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			opts := &InvokeOptions{}
+			opts := &invokeOptions{}
 			CompositeInvoke(tt.input...).applyInvokeOption(opts)
 			assert.Equal(t, tt.want, opts)
 		})
