@@ -57,9 +57,9 @@ func loadConverterPlugin(
 ) (plugin.Converter, error) {
 	// Default to the known version of the plugin, this ensures we use the version of the yaml-converter
 	// that aligns with the yaml codegen we've linked to for this CLI release.
-	pluginSpec := workspace.PluginSpec{
-		Kind: apitype.ConverterPlugin,
-		Name: name,
+	pluginSpec, err := workspace.NewPluginSpec(name, apitype.ConverterPlugin, "", nil)
+	if err != nil {
+		return nil, fmt.Errorf("create plugin spec: %w", err)
 	}
 	if versionSet := util.SetKnownPluginVersion(&pluginSpec); versionSet {
 		ctx.Diag.Infof(
