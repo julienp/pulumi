@@ -1378,7 +1378,7 @@ func (host *nodeLanguageHost) RunPlugin(
 		return err
 	}
 
-	env := req.Env
+	env := os.Environ()
 	if opts.typescript {
 		env = append(env, "PULUMI_NODEJS_TYPESCRIPT=true")
 	}
@@ -1403,7 +1403,7 @@ func (host *nodeLanguageHost) RunPlugin(
 		return err
 	}
 
-	nodeargs = append(nodeargs, req.Info.ProgramDirectory)
+	nodeargs = append(nodeargs, req.Info.EntryPoint)
 
 	args = append(args, nodeargs...)
 
