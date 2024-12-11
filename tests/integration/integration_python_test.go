@@ -1530,7 +1530,6 @@ func TestConvertTerraformProviderPython(t *testing.T) {
 	require.NoError(t, err)
 
 	_, _ = e.RunCommand("pulumi", "plugin", "install", "converter", "terraform")
-	_, _ = e.RunCommand("pulumi", "plugin", "install", "resource", "terraform-provider")
 	_, _ = e.RunCommand("pulumi", "convert", "--from", "terraform", "--language", "python", "--out", "pydir")
 
 	b, err := os.ReadFile(filepath.Join(e.CWD, "pydir/requirements.txt"))
