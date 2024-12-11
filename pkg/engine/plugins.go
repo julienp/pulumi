@@ -43,6 +43,80 @@ const (
 	preparePluginVerboseLog = 8
 )
 
+// PackageSet represents a set of packages.
+type PackageSet map[string]workspace.PackageDescriptor
+
+// Add adds a package to this package set.
+func (p PackageSet) Add(plug workspace.PackageDescriptor) {
+	p[plug.String()] = plug
+}
+
+// NewPackageSet creates a new empty pluginSet.
+func NewPackageSet(plugins ...workspace.PackageDescriptor) PackageSet {
+	var s PackageSet = make(map[string]workspace.PackageDescriptor, len(plugins))
+	for _, p := range plugins {
+		s.Add(p)
+	}
+	return s
+}
+
+// Union returns the union of this PackageSet with another PackageSet.
+func (p PackageSet) Union(other PackageSet) PackageSet {
+	newSet := NewPackageSet()
+	for _, value := range p {
+		newSet.Add(value)
+	}
+	for _, value := range other {
+		newSet.Add(value)
+	}
+	return newSet
+}
+
+// ToPluginSet converts this PackageSet to a PluginSet by discarding all parameterization information.
+func (p PackageSet) ToPluginSet() PluginSet {
+	newSet := NewPluginSet()
+	for _, value := range p {
+		newSet.Add(value.PluginSpec)
+	}
+	return newSet
+}
+
+// A PackageUpdate represents an update from one version of a package to another.
+type PackageUpdate struct {
+	// The old package version.
+	Old workspace.PackageDescriptor
+	// The new package version.
+	New workspace.PackageDescriptor
+}
+
+// UpdatesTo returns a list of PackageUpdates that represent the updates to the argument PackageSet present in this
+// PackageSet. For instance, if the argument contains a package P at version 3, and this PackageSet contains the same
+// package P (as identified by name and kind) at version 5, this method will return an update where the Old field
+// contains the version 3 instance from the argument and the New field contains the version 5 instance from this
+// PackageSet.
+func (p PackageSet) UpdatesTo(old PackageSet) []PackageUpdate {
+	var updates []PackageUpdate
+	for _, value := range p {
+		for _, otherValue := range old {
+			namesEqual := value.Name == otherValue.Name && value.Kind == otherValue.Kind &&
+				(value.Parameterization == nil || otherValue.Parameterization == nil ||
+					value.Parameterization.Name == otherValue.Parameterization.Name)
+
+			if namesEqual {
+				if value.Version != nil && otherValue.Version != nil && value.Version.GT(*otherValue.Version) {
+					updates = append(updates, PackageUpdate{Old: otherValue, New: value})
+				}
+				if value.Parameterization != nil && otherValue.Parameterization != nil &&
+					value.Parameterization.Version.GT(otherValue.Parameterization.Version) {
+					updates = append(updates, PackageUpdate{Old: otherValue, New: value})
+				}
+			}
+		}
+	}
+
+	return updates
+}
+
 // PluginSet represents a set of plugins.
 type PluginSet map[string]workspace.PluginSpec
 
@@ -98,34 +172,6 @@ func (p PluginSet) Deduplicate() PluginSet {
 		add(value)
 	}
 	return newSet
-}
-
-// A PluginUpdate represents an update from one version of a plugin to another.
-type PluginUpdate struct {
-	// The old plugin version.
-	Old workspace.PluginSpec
-	// The new plugin version.
-	New workspace.PluginSpec
-}
-
-// UpdatesTo returns a list of PluginUpdates that represent the updates to the argument PluginSet present in this
-// PluginSet. For instance, if the argument contains a plugin P at version 3, and this PluginSet contains the same
-// plugin P (as identified by name and kind) at version 5, this method will return an update where the Old field
-// contains the version 3 instance from the argument and the New field contains the version 5 instance from this
-// PluginSet.
-func (p PluginSet) UpdatesTo(old PluginSet) []PluginUpdate {
-	var updates []PluginUpdate
-	for _, value := range p {
-		for _, otherValue := range old {
-			if value.Name == otherValue.Name && value.Kind == otherValue.Kind {
-				if value.Version != nil && otherValue.Version != nil && value.Version.GT(*otherValue.Version) {
-					updates = append(updates, PluginUpdate{Old: otherValue, New: value})
-				}
-			}
-		}
-	}
-
-	return updates
 }
 
 // Values returns a slice of all of the plugins contained within this set.
@@ -192,45 +238,46 @@ func GetRequiredPlugins(
 	return plugins, nil
 }
 
-// gatherPluginsFromProgram inspects the given program and returns the set of plugins that the program requires to
+// gatherPackagesFromProgram inspects the given program and returns the set of packages that the program requires to
 // function. If the language host does not support this operation, the empty set is returned.
-func gatherPluginsFromProgram(plugctx *plugin.Context, runtime string, prog plugin.ProgramInfo) (PluginSet, error) {
-	logging.V(preparePluginLog).Infof("gatherPluginsFromProgram(): gathering plugins from language host")
-	set := NewPluginSet()
+func gatherPackagesFromProgram(plugctx *plugin.Context, runtime string, info plugin.ProgramInfo) (PackageSet, error) {
+	logging.V(preparePluginLog).Infof("gatherPackagesFromProgram(): gathering plugins from language host")
 
-	langhostPlugins, err := GetRequiredPlugins(plugctx.Host, runtime, prog)
-	if err != nil {
-		return set, err
+	lang, err := plugctx.Host.LanguageRuntime(runtime, info)
+	if lang == nil || err != nil {
+		return nil, fmt.Errorf("failed to load language plugin %s: %w", runtime, err)
 	}
-	for _, plug := range langhostPlugins {
-		// Ignore language plugins
-		if plug.Kind == apitype.LanguagePlugin {
-			continue
-		}
 
+	deps, err := lang.GetRequiredPackages(info)
+	if err != nil {
+		return nil, fmt.Errorf("failed to discover package requirements: %w", err)
+	}
+
+	set := NewPackageSet()
+	for _, pkg := range deps {
 		logging.V(preparePluginLog).Infof(
-			"gatherPluginsFromProgram(): plugin %s %s (%s) is required by language host",
-			plug.Name, plug.Version, plug.PluginDownloadURL)
-		set.Add(plug)
+			"gatherPackagesFromProgram(): package %s (%s) is required by language host",
+			pkg.String(), pkg.PluginDownloadURL)
+		set.Add(pkg)
 	}
 	return set, nil
 }
 
-// gatherPluginsFromSnapshot inspects the snapshot associated with the given Target and returns the set of plugins
-// required to operate on the snapshot. The set of plugins is derived from first-class providers saved in the snapshot
+// gatherPackagesFromSnapshot inspects the snapshot associated with the given Target and returns the set of packages
+// required to operate on the snapshot. The set of packages is derived from first-class providers saved in the snapshot
 // and the plugins specified in the deployment manifest.
-func gatherPluginsFromSnapshot(plugctx *plugin.Context, target *deploy.Target) (PluginSet, error) {
-	logging.V(preparePluginLog).Infof("gatherPluginsFromSnapshot(): gathering plugins from snapshot")
-	set := NewPluginSet()
+func gatherPackagesFromSnapshot(plugctx *plugin.Context, target *deploy.Target) (PackageSet, error) {
+	logging.V(preparePluginLog).Infof("gatherPackagesFromSnapshot(): gathering plugins from snapshot")
+	set := NewPackageSet()
 	if target == nil || target.Snapshot == nil {
-		logging.V(preparePluginLog).Infof("gatherPluginsFromSnapshot(): no snapshot available, skipping")
+		logging.V(preparePluginLog).Infof("gatherPackagesFromSnapshot(): no snapshot available, skipping")
 		return set, nil
 	}
 	for _, res := range target.Snapshot.Resources {
 		urn := res.URN
 		if !providers.IsProviderType(urn.Type()) {
 			logging.V(preparePluginVerboseLog).Infof(
-				"gatherPluginsFromSnapshot(): skipping %q, not a provider", urn)
+				"gatherPackagesFromSnapshot(): skipping %q, not a provider", urn)
 			continue
 		}
 		pkg := providers.GetProviderPackage(urn.Type())
@@ -251,15 +298,30 @@ func gatherPluginsFromSnapshot(plugctx *plugin.Context, target *deploy.Target) (
 		if err != nil {
 			return set, err
 		}
+		parameterization, err := providers.GetProviderParameterization(pkg, res.Inputs)
+		if err != nil {
+			return set, err
+		}
+		var packageParameterization *workspace.Parameterization
+		if parameterization != nil {
+			packageParameterization = &workspace.Parameterization{
+				Name:    string(parameterization.Name),
+				Version: parameterization.Version,
+				Value:   parameterization.Value,
+			}
+		}
 
 		logging.V(preparePluginLog).Infof(
-			"gatherPluginsFromSnapshot(): plugin %s %s is required by first-class provider %q", name, version, urn)
-		set.Add(workspace.PluginSpec{
-			Name:              name.String(),
-			Kind:              apitype.ResourcePlugin,
-			Version:           version,
-			PluginDownloadURL: downloadURL,
-			Checksums:         checksums,
+			"gatherPackagesFromSnapshot(): package %s %s is required by first-class provider %q", name, version, urn)
+		set.Add(workspace.PackageDescriptor{
+			PluginSpec: workspace.PluginSpec{
+				Name:              name.String(),
+				Kind:              apitype.ResourcePlugin,
+				Version:           version,
+				PluginDownloadURL: downloadURL,
+				Checksums:         checksums,
+			},
+			Parameterization: packageParameterization,
 		})
 	}
 	return set, nil
