@@ -852,9 +852,6 @@ func TestImportParameterizedSmoke(t *testing.T) {
 	e.RunCommand("pulumi", "login", "--cloud-url", e.LocalURL())
 	e.RunCommand("pulumi", "new", "random-python", "--yes")
 
-	// Install the terraform-provider plugin
-	e.RunCommand("pulumi", "plugin", "install", "resource", "terraform-provider")
-
 	// Change to use the parameterised version of the provider
 	e.RunCommand("pulumi", "plugin", "install", "resource", "terraform-provider", "0.3.1")
 	replaceStringInFile := func(file, pattern, replacement string) {
@@ -875,8 +872,9 @@ func TestImportParameterizedSmoke(t *testing.T) {
 	// choose the right Provider, because "random" alone isn't enough to know to use the parameterized provider
 	// (it would normally use the github.com/pulumi/pulumi-random bridged version). For packages that aren't
 	// bridged this would result in an error (e.g. https://github.com/pulumi/pulumi/issues/17289)
-	e.RunCommand("pulumi", "import", "--yes", "random:index/id:Id", "identifier", "p-9hUg", "--generate-code=false")
-	// TODO: generate-code is currently false, we should fix that!
+	stdout, _ := e.RunCommand("pulumi", "import", "--yes", "random:index/id:Id", "identifier", "p-9hUg")
+	// Check it wrote out the expected python code
+	assert.Contains(t, stdout, "identifier = random.Id(\"identifier\"")
 
 	// Check this used the right provider, i.e. one with parameterization
 	stack, _ := e.RunCommand("pulumi", "stack", "export")

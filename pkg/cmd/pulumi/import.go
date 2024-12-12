@@ -531,7 +531,7 @@ func generateImportedDefinitions(ctx *plugin.Context,
 			return err
 		}
 		return nil
-	}, resources, names)
+	}, resources, snap.Resources, names)
 }
 
 func newImportCmd() *cobra.Command {
