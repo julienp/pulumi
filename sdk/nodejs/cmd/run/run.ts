@@ -260,12 +260,12 @@ export async function run(
         // tanspileOnly controls wether ts-node should do type checking or not.
         // Users might have a separate build step that runs tsc for type
         // checking, and don't want to pay the performance cost of type checking
-        // twice. This also enables using swc, which doesn' support type
+        // twice. This also enables using swc, which doesn't support type
         // checking, with ts-node.
         //
-        // If the `PULUMI_NODEJS_TRANSPILE_ONLY `env variable is set, we use
+        // If the `PULUMI_NODEJS_TRANSPILE_ONLY` env variable is set, we use
         // that to determine the value of `transpileOnly.` Otherwise we use the
-        // `noCheck `compiler option from the tsconfig. Otherwise we default to
+        // `noCheck` compiler option from the tsconfig. Otherwise we default to
         // ts-node's default, which is to type check.
         let transpileOnly = undefined;
         const transpileOnlyEnv = process.env["PULUMI_NODEJS_TRANSPILE_ONLY"];
